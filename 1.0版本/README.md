@@ -1,14 +1,14 @@
 # Tampermonkey Scripts 1.0.0
 
-这是 `1.0版本/` 的历史归档。三个脚本保留 1.0.0 版本行为，不跟随根目录和 `1.1版本/` 的功能更新。
+这是 `1.0版本/` 的历史归档。
 
 ## 脚本列表
 
-| 脚本 | 版本 | 站点 | 说明 | 安装 |
-| --- | --- | --- | --- | --- |
-| `zhihu-reading-helper.user.js` | 1.0.0 | 知乎 | 右侧按钮轮；记录最近问题；优先调用知乎原生收起/阅读全文；避开右下角“看山”和回到顶部按钮。 | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/zhihu-reading-helper.user.js) |
-| `instagram-media-downloader.user.js` | 1.0.0 | Instagram | 帖子三点按钮左侧插入下载入口；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。 | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/instagram-media-downloader.user.js) |
-| `bluesky-media-downloader.user.js` | 1.0.0 | Bluesky | 帖子下载按钮和页面级入口；API 补全媒体；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。 | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/bluesky-media-downloader.user.js) |
+| 脚本 | 版本 | 站点 | 说明                                                                 | 安装 |
+| --- | --- | --- |--------------------------------------------------------------------| --- |
+| `zhihu-reading-helper.user.js` | 1.0.0 | 知乎 | 右侧按钮轮；记录最近问题；优先调用知乎原生收起/阅读全文；避开右下角知乎和回到顶部按钮。                       | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/zhihu-reading-helper.user.js) |
+| `instagram-media-downloader.user.js` | 1.0.0 | Instagram | 帖子设置按钮左侧添加下载按钮；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。         | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/instagram-media-downloader.user.js) |
+| `bluesky-media-downloader.user.js` | 1.0.0 | Bluesky | 帖子下载按钮和页面下载面板；API 补全媒体；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。 | [安装 1.0.0](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/1.0%E7%89%88%E6%9C%AC/bluesky-media-downloader.user.js) |
 
 ## 安装
 
@@ -28,7 +28,7 @@
 Instagram 的媒体地址可能是临时 URL 或 `blob:`，个别情况下会下载失败或只能打开原链接。
 
 ### Bluesky Media Downloader
-用来下载 Bluesky 的图片、GIF 和视频，可转视频为 GIF；1.0.0 尚未包含 1.1.0 的下载队列流程。
+用来下载 Bluesky 的图片、GIF 和视频，可转视频为 GIF；
 - 脚本声明以下跨源权限：
   - `public.api.bsky.app`
   - `bsky.social`
@@ -41,7 +41,7 @@ Instagram 的媒体地址可能是临时 URL 或 `blob:`，个别情况下会下
 
 ## 注意事项
 
-三个脚本都只处理浏览器页面已经加载出来的内容。Instagram 和 Bluesky 的视频、GIF、音频转换都在浏览器本地执行，长视频会比较耗 CPU 和内存。外部库来自 CDN，网络不可达时，基础下载仍可用，但 MP3/GIF 附加功能不可用。如果脚本管理器拒绝跨域权限，媒体转换和 API 补全会失败。
+zhihu-reading-helper，instagram-media-downloader.user，bluesky-media-downloader.user脚本都只处理浏览器页面已经加载出来的内容。Instagram 和 Bluesky 的视频、GIF、音频转换都在浏览器本地执行，长视频会比较耗 CPU 和内存。外部库来自 CDN，网络不通时，基础下载仍可用，但 MP3/GIF 附加功能不可用。如果脚本管理器拒绝跨域权限，媒体转换和 API 补全会失败。
 
 ## 相关文档
 
