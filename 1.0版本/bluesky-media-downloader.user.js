@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bluesky Media Downloader@萧浩已去(xiaohaoyiqu)
 // @namespace    local.content.downloader
-// @version      1.1.0
-// @description:zh-CN  Bluesky 媒体下载辅助：给已加载帖子添加下载入口，支持立即下载、加入队列、API 补全、图片 PNG、视频 MP4、GIF 转换和音频 MP3 抽取。
+// @version      1.0.0
+// @description:zh-CN  Bluesky 媒体下载辅助：给已加载帖子添加下载入口，支持 API 补全、图片 PNG、视频 MP4、GIF 转换和音频 MP3 抽取。
 // @author       萧浩已去(xiaohaoyiqu)
 // @match        https://bsky.app/*
 // @run-at       document-idle
@@ -26,8 +26,6 @@
   const POST_BUTTON_SLOT_CLASS = "cdb-post-button-slot";
   const POST_BUTTON_FALLBACK_CLASS = "cdb-post-button-fallback";
   const PANEL_CLASS = "cdb-picker-panel";
-  const ACTION_PANEL_CLASS = "cdb-action-panel";
-  const QUEUE_PANEL_CLASS = "cdb-queue-panel";
   const TOAST_CLASS = "cdb-toast";
   const POST_READY_ATTR = "data-cdb-post-download-ready";
   const POST_SELECTOR = [
@@ -56,12 +54,9 @@
   const GIFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js";
   const GIF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js";
   const MAX_PAGE_API_POSTS = 40;
-  const MAX_QUEUE_ITEMS = 30;
   const didCache = new Map();
   const postViewCache = new Map();
-  const mediaQueue = [];
   let scanTimer = 0;
-  let nextQueueId = 1;
 
   function addStyle() {
     if (document.getElementById("cdb-media-downloader-style")) return;
@@ -127,9 +122,7 @@
         z-index: 2147483646;
         background: rgba(15, 23, 42, 0.36);
       }
-      .${PANEL_CLASS},
-      .${ACTION_PANEL_CLASS},
-      .${QUEUE_PANEL_CLASS} {
+      .${PANEL_CLASS} {
         position: fixed;
         top: 72px;
         right: 24px;
@@ -142,12 +135,6 @@
         border-radius: 8px;
         box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
         font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      .${ACTION_PANEL_CLASS} {
-        width: min(380px, calc(100vw - 32px));
-      }
-      .${QUEUE_PANEL_CLASS} {
-        width: min(560px, calc(100vw - 32px));
       }
       .cdb-panel-head,
       .cdb-panel-foot {
@@ -179,15 +166,10 @@
       }
       .cdb-panel-close,
       .cdb-panel-download,
-      .cdb-panel-add-queue,
       .cdb-panel-audio,
       .cdb-panel-gif,
       .cdb-panel-select,
-      .cdb-panel-clear,
-      .cdb-panel-delete,
-      .cdb-panel-download-all,
-      .cdb-panel-empty,
-      .cdb-action-button {
+      .cdb-panel-clear {
         border: 0;
         border-radius: 6px;
         padding: 6px 10px;
@@ -201,10 +183,6 @@
         color: #fff;
         background: #0f172a;
       }
-      .cdb-panel-add-queue {
-        color: #fff;
-        background: #047857;
-      }
       .cdb-panel-audio {
         color: #fff;
         background: #2563eb;
@@ -217,44 +195,6 @@
       .cdb-panel-clear {
         color: #0f172a;
         background: #e2e8f0;
-      }
-      .cdb-panel-delete,
-      .cdb-panel-empty {
-        color: #fff;
-        background: #dc2626;
-      }
-      .cdb-panel-download-all {
-        color: #fff;
-        background: #047857;
-      }
-      .cdb-panel-foot button:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      .cdb-action-body {
-        display: grid;
-        gap: 10px;
-        padding: 12px;
-      }
-      .cdb-action-button {
-        width: 100%;
-        padding: 10px 12px;
-        color: #fff;
-        background: #0f172a;
-        text-align: left;
-      }
-      .cdb-action-button[data-action="queue"] {
-        background: #047857;
-      }
-      .cdb-action-title {
-        display: block;
-        font-weight: 700;
-      }
-      .cdb-action-desc {
-        display: block;
-        margin-top: 2px;
-        opacity: 0.78;
-        font-size: 12px;
       }
       .cdb-media-row {
         display: grid;
@@ -288,11 +228,6 @@
         word-break: break-all;
         color: #64748b;
         font-size: 12px;
-      }
-      .cdb-queue-empty {
-        padding: 18px 12px;
-        color: #64748b;
-        text-align: center;
       }
       .${TOAST_CLASS} {
         position: fixed;
@@ -897,7 +832,7 @@
         return;
       }
       notify("正在补全 Bluesky 媒体信息...");
-      openActionChoice(await enrichMediaItems(items));
+      openPicker(await enrichMediaItems(items));
     });
     document.body.appendChild(button);
   }
@@ -1012,51 +947,11 @@
       : button;
   }
 
-  function openActionChoice(items) {
+  function openPicker(items) {
     closePicker();
     if (!items.length) return;
-
-    const mask = document.createElement("div");
-    mask.className = `${PANEL_CLASS}-mask`;
-    const panel = document.createElement("section");
-    panel.className = ACTION_PANEL_CLASS;
-    panel.innerHTML = `
-      <div class="cdb-panel-head">
-        <strong>下载操作（${items.length} 个资源）</strong>
-        <button type="button" class="cdb-panel-close">关闭</button>
-      </div>
-      <div class="cdb-action-body">
-        <button type="button" class="cdb-action-button" data-action="download">
-          <span class="cdb-action-title">立即下载</span>
-          <span class="cdb-action-desc">单张普通图片直接保存，多媒体、视频或 GIF 继续选择。</span>
-        </button>
-        <button type="button" class="cdb-action-button" data-action="queue">
-          <span class="cdb-action-title">添加到队列</span>
-          <span class="cdb-action-desc">多媒体先选择要加入的项目，队列可稍后统一下载。</span>
-        </button>
-      </div>
-    `;
-
-    mask.addEventListener("click", closePicker);
-    panel.querySelector(".cdb-panel-close").addEventListener("click", closePicker);
-    panel.querySelector('[data-action="download"]').addEventListener("click", async () => {
-      closePicker();
-      await handleImmediateDownload(items);
-    });
-    panel.querySelector('[data-action="queue"]').addEventListener("click", () => {
-      closePicker();
-      handleAddToQueue(items);
-    });
-    document.body.appendChild(mask);
-    document.body.appendChild(panel);
-  }
-
-  function openPicker(items, mode = "download") {
-    closePicker();
-    if (!items.length) return;
-    const isQueueMode = mode === "queue";
-    const hasAudioAction = !isQueueMode && items.some(canExtractAudio);
-    const hasGifAction = !isQueueMode && items.some(canConvertToGif);
+    const hasAudioAction = items.some(canExtractAudio);
+    const hasGifAction = items.some(canConvertToGif);
 
     const mask = document.createElement("div");
     mask.className = `${PANEL_CLASS}-mask`;
@@ -1064,7 +959,7 @@
     panel.className = PANEL_CLASS;
     panel.innerHTML = `
       <div class="cdb-panel-head">
-        <strong>${isQueueMode ? `添加到队列（${items.length} 个资源）` : `选择媒体（${items.length} 个资源）`}</strong>
+        <strong>选择媒体（${items.length} 个资源）</strong>
         <button type="button" class="cdb-panel-close">关闭</button>
       </div>
       <div class="cdb-panel-body"></div>
@@ -1076,7 +971,7 @@
         <span class="cdb-panel-actions">
           <button type="button" class="cdb-panel-audio">抽取音频 MP3</button>
           <button type="button" class="cdb-panel-gif">转 GIF</button>
-          <button type="button" class="${isQueueMode ? "cdb-panel-add-queue" : "cdb-panel-download"}">${isQueueMode ? "添加选中到队列" : "下载选中"}</button>
+          <button type="button" class="cdb-panel-download">下载选中</button>
         </span>
       </div>
     `;
@@ -1114,16 +1009,10 @@
       const boxes = [...panel.querySelectorAll("input[type='checkbox']")];
       for (const box of boxes) box.checked = false;
     });
-    panel.querySelector(isQueueMode ? ".cdb-panel-add-queue" : ".cdb-panel-download").addEventListener("click", async () => {
+    panel.querySelector(".cdb-panel-download").addEventListener("click", async () => {
       const selected = selectedItems(panel, items);
       if (!selected.length) {
-        notify(isQueueMode ? "请先选择要加入队列的媒体。" : "请先选择要下载的媒体。");
-        return;
-      }
-      if (isQueueMode) {
-        addItemsToQueue(selected);
-        closePicker();
-        openQueuePanel();
+        notify("请先选择要下载的媒体。");
         return;
       }
       for (const [index, item] of selected.entries()) await downloadMedia(item, index);
@@ -1151,251 +1040,12 @@
 
   async function handlePostButtonDownload(items) {
     if (!items.length) return;
-    openActionChoice(items);
-  }
-
-  async function handleImmediateDownload(items) {
     if (isSinglePlainImage(items)) {
       notify("正在下载单张图片...");
       await downloadMedia(items[0], 0);
       return;
     }
     openPicker(items);
-  }
-
-  function handleAddToQueue(items) {
-    if (!items.length) return;
-    if (items.length === 1) {
-      addItemsToQueue(items);
-      openQueuePanel();
-      return;
-    }
-    openPicker(items, "queue");
-  }
-
-  function addItemsToQueue(items) {
-    const existingKeys = new Set(mediaQueue.map((entry) => entry.key));
-    const availableSlots = Math.max(0, MAX_QUEUE_ITEMS - mediaQueue.length);
-    let added = 0;
-    let skipped = 0;
-    let skippedByLimit = 0;
-    for (const item of items) {
-      if (!item || !item.url) continue;
-      const key = queueKey(item);
-      if (existingKeys.has(key)) {
-        skipped += 1;
-        continue;
-      }
-      if (added >= availableSlots) {
-        skippedByLimit += 1;
-        continue;
-      }
-      existingKeys.add(key);
-      mediaQueue.push({
-        id: nextQueueId++,
-        key,
-        item: cloneMediaItem(item),
-        addedAt: Date.now(),
-      });
-      added += 1;
-    }
-    updateQueuePanel();
-    const parts = [];
-    if (added) parts.push(`已添加 ${added} 个媒体到队列`);
-    if (skipped) parts.push(`跳过 ${skipped} 个重复项`);
-    if (skippedByLimit) parts.push(`队列最多 ${MAX_QUEUE_ITEMS} 项，已跳过 ${skippedByLimit} 个`);
-    notify(parts.length ? `${parts.join("，")}。` : "没有新的媒体可加入队列。");
-    return added;
-  }
-
-  function queueKey(item) {
-    return [item.kind || "", item.type || "", item.postId || item.cid || "", item.url || item.playlist || ""].join("|");
-  }
-
-  function cloneMediaItem(item) {
-    return { ...item };
-  }
-
-  function openQueuePanel() {
-    closePicker();
-    let panel = document.querySelector(`.${QUEUE_PANEL_CLASS}`);
-    if (panel) {
-      renderQueuePanel(panel);
-      return;
-    }
-
-    panel = document.createElement("section");
-    panel.className = QUEUE_PANEL_CLASS;
-    panel.innerHTML = `
-      <div class="cdb-panel-head">
-        <strong>下载队列</strong>
-        <button type="button" class="cdb-panel-close">关闭</button>
-      </div>
-      <div class="cdb-panel-body"></div>
-      <div class="cdb-panel-foot">
-        <span class="cdb-panel-bulk">
-          <button type="button" class="cdb-panel-select" data-requires-queue="1">全选</button>
-          <button type="button" class="cdb-panel-clear" data-requires-queue="1">取消全选</button>
-          <button type="button" class="cdb-panel-delete" data-requires-queue="1">删除选中</button>
-        </span>
-        <span class="cdb-panel-actions">
-          <button type="button" class="cdb-panel-audio" data-requires-queue="1">选中视频抽 MP3</button>
-          <button type="button" class="cdb-panel-gif" data-requires-queue="1">选中视频转 GIF</button>
-          <button type="button" class="cdb-panel-download" data-requires-queue="1">按类型下载选中</button>
-          <button type="button" class="cdb-panel-download-all" data-requires-queue="1">下载全部</button>
-          <button type="button" class="cdb-panel-empty" data-requires-queue="1">清空队列</button>
-        </span>
-      </div>
-    `;
-
-    panel.querySelector(".cdb-panel-close").addEventListener("click", closeQueuePanel);
-    panel.querySelector(".cdb-panel-select").addEventListener("click", () => {
-      for (const box of panel.querySelectorAll("input[type='checkbox']")) box.checked = true;
-    });
-    panel.querySelector(".cdb-panel-clear").addEventListener("click", () => {
-      for (const box of panel.querySelectorAll("input[type='checkbox']")) box.checked = false;
-    });
-    panel.querySelector(".cdb-panel-delete").addEventListener("click", () => {
-      const selected = selectedQueueEntries(panel);
-      if (!selected.length) {
-        notify("请先选择要删除的队列项。");
-        return;
-      }
-      removeQueueEntries(selected);
-      notify(`已删除 ${selected.length} 个队列项。`);
-    });
-    panel.querySelector(".cdb-panel-audio").addEventListener("click", async () => {
-      await processQueueEntries(
-        selectedQueueEntries(panel),
-        canExtractAudio,
-        extractAudio,
-        "没有选中的普通视频，无法抽取音频。图片不会参与转换。",
-        "开始抽取队列中选中视频的音频。",
-      );
-    });
-    panel.querySelector(".cdb-panel-gif").addEventListener("click", async () => {
-      await processQueueEntries(
-        selectedQueueEntries(panel),
-        canConvertToGif,
-        downloadGifVideo,
-        "没有选中的视频，无法转换 GIF。图片不会参与转换。",
-        "开始把队列中选中的视频转为 GIF。",
-      );
-    });
-    panel.querySelector(".cdb-panel-download").addEventListener("click", async () => {
-      await downloadQueueEntries(selectedQueueEntries(panel));
-    });
-    panel.querySelector(".cdb-panel-download-all").addEventListener("click", async () => {
-      await downloadQueueEntries([...mediaQueue]);
-    });
-    panel.querySelector(".cdb-panel-empty").addEventListener("click", () => {
-      if (!mediaQueue.length) return;
-      mediaQueue.length = 0;
-      renderQueuePanel(panel);
-      notify("队列已清空。");
-    });
-
-    document.body.appendChild(panel);
-    renderQueuePanel(panel);
-  }
-
-  function renderQueuePanel(panel) {
-    const title = panel.querySelector(".cdb-panel-head strong");
-    if (title) title.textContent = `下载队列（${mediaQueue.length}/${MAX_QUEUE_ITEMS} 项）`;
-    const body = panel.querySelector(".cdb-panel-body");
-    if (!body) return;
-    body.textContent = "";
-    if (!mediaQueue.length) {
-      const empty = document.createElement("div");
-      empty.className = "cdb-queue-empty";
-      empty.textContent = "队列为空。";
-      body.appendChild(empty);
-    } else {
-      for (const [index, entry] of mediaQueue.entries()) {
-        const item = entry.item;
-        const row = document.createElement("label");
-        row.className = "cdb-media-row";
-        row.innerHTML = `
-          <input type="checkbox" data-queue-id="${entry.id}">
-          ${
-            item.thumb
-              ? `<img src="${escapeAttr(item.thumb)}" alt="">`
-              : `<div class="cdb-media-thumb">${mediaLabel(item)}</div>`
-          }
-          <span>
-            <span class="cdb-media-title">${escapeHtml(item.author || "unknown")} · ${mediaLabel(item)} ${index + 1}</span>
-            <span class="cdb-media-url">${escapeHtml(shortUrl(item.url || item.playlist || ""))}</span>
-          </span>
-        `;
-        body.appendChild(row);
-      }
-    }
-    for (const button of panel.querySelectorAll("[data-requires-queue]")) {
-      button.disabled = !mediaQueue.length;
-    }
-  }
-
-  function updateQueuePanel() {
-    const panel = document.querySelector(`.${QUEUE_PANEL_CLASS}`);
-    if (panel) renderQueuePanel(panel);
-  }
-
-  function selectedQueueEntries(panel) {
-    const ids = new Set(
-      [...panel.querySelectorAll("input[type='checkbox']:checked")]
-        .map((box) => Number(box.getAttribute("data-queue-id")))
-        .filter(Number.isFinite),
-    );
-    return mediaQueue.filter((entry) => ids.has(entry.id));
-  }
-
-  function removeQueueEntries(entries) {
-    const ids = new Set(entries.map((entry) => entry.id));
-    for (let index = mediaQueue.length - 1; index >= 0; index -= 1) {
-      if (ids.has(mediaQueue[index].id)) mediaQueue.splice(index, 1);
-    }
-    updateQueuePanel();
-  }
-
-  async function downloadQueueEntries(entries) {
-    if (!entries.length) {
-      notify("请先选择要下载的队列项。");
-      return;
-    }
-    notify(`开始下载队列中的 ${entries.length} 个媒体。`);
-    const completed = [];
-    for (const [index, entry] of entries.entries()) {
-      if ((await downloadMedia(entry.item, index)) !== false) completed.push(entry);
-    }
-    if (completed.length) {
-      removeQueueEntries(completed);
-      notify(`已处理 ${completed.length} 个队列项，并从队列中移除。`);
-    }
-  }
-
-  async function processQueueEntries(entries, predicate, operation, emptyMessage, startMessage) {
-    if (!entries.length) {
-      notify("请先选择队列项。");
-      return;
-    }
-    const targets = entries.filter((entry) => predicate(entry.item));
-    if (!targets.length) {
-      notify(emptyMessage);
-      return;
-    }
-    notify(startMessage);
-    const completed = [];
-    for (const [index, entry] of targets.entries()) {
-      if ((await operation(entry.item, index)) !== false) completed.push(entry);
-    }
-    if (completed.length) {
-      removeQueueEntries(completed);
-      notify(`已处理 ${completed.length} 个视频队列项，并从队列中移除。`);
-    }
-  }
-
-  function closeQueuePanel() {
-    document.querySelector(`.${QUEUE_PANEL_CLASS}`)?.remove();
   }
 
   function isSinglePlainImage(items) {
@@ -1418,10 +1068,8 @@
 
   function closePicker() {
     const panel = document.querySelector(`.${PANEL_CLASS}`);
-    const actionPanel = document.querySelector(`.${ACTION_PANEL_CLASS}`);
     const mask = document.querySelector(`.${PANEL_CLASS}-mask`);
     if (panel) panel.remove();
-    if (actionPanel) actionPanel.remove();
     if (mask) mask.remove();
   }
 
@@ -1625,23 +1273,22 @@
     try {
       if (item.kind === "gifImage") {
         downloadUrl(item.url, filenameFor(item, "gif", index, "gif"));
-        return true;
+        return;
       }
       if (item.kind === "gifVideo") {
-        return await downloadGifVideo(item, index);
+        await downloadGifVideo(item, index);
+        return;
       }
       if (item.type === "image") {
         const blob = await requestBlob(item.url);
         const pngBlob = await imageBlobToPng(blob);
         downloadBlob(pngBlob, filenameFor(item, "image", index, "png"));
-        return true;
+        return;
       }
       await downloadVideoMp4(item, index);
-      return true;
     } catch (error) {
       notify(`下载失败：${readableFetchError(error)}。已尝试打开原链接。`);
       if (item.url && !item.url.startsWith("blob:")) openInNewTab(item.url);
-      return false;
     }
   }
 
@@ -1672,11 +1319,9 @@
       const gifBlob = await videoBlobToGif(videoBlob, gifEncoder);
       downloadBlob(gifBlob, filenameFor(item, "gif", index, "gif"));
       notify("GIF 已生成。");
-      return true;
     } catch (error) {
       notify(`GIF 转换失败：${readableFetchError(error)}。`);
       if (item.url && !item.url.startsWith("blob:")) openInNewTab(item.url);
-      return false;
     }
   }
 
@@ -1690,11 +1335,9 @@
       const mp3Blob = encodeMp3(audioBuffer, mp3EncoderLib);
       downloadBlob(mp3Blob, filenameFor(item, "audio", index, "mp3"));
       notify("音频已生成。");
-      return true;
     } catch (error) {
       notify(`音频抽取失败：${readableFetchError(error)}。`);
       if (item.url && !item.url.startsWith("blob:")) openInNewTab(item.url);
-      return false;
     }
   }
 
@@ -2234,9 +1877,7 @@
     const observer = new MutationObserver((mutations) => {
       const hasPageChange = mutations.some((mutation) =>
         [...mutation.addedNodes, ...mutation.removedNodes].some(
-          (node) =>
-            !(node instanceof HTMLElement) ||
-            !node.closest(`.${FLOAT_BUTTON_CLASS}, .${PANEL_CLASS}, .${ACTION_PANEL_CLASS}, .${QUEUE_PANEL_CLASS}, .${TOAST_CLASS}`),
+          (node) => !(node instanceof HTMLElement) || !node.closest(`.${FLOAT_BUTTON_CLASS}, .${PANEL_CLASS}, .${TOAST_CLASS}`),
         ),
       );
       if (hasPageChange) scheduleScan();

@@ -1,0 +1,46 @@
+# Tampermonkey Scripts
+这些脚本主要面向电脑的 Chrome / Edge + Tampermonkey。Firefox + Violentmonkey 或 Tampermonkey 理论可用，但需要自行验证，可以提交跟我说。移动端的浏览器需等待。
+
+## 脚本列表
+
+| 脚本 | 版本 | 站点 | 说明 | 安装 |
+| --- | --- | --- | --- | --- |
+| `zhihu-reading-helper.user.js` | 1.0.0 | 知乎 | 右侧按钮轮；记录最近问题；优先调用知乎原生收起/阅读全文；避开右下角“看山”和回到顶部按钮。 | [Raw](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/zhihu-reading-helper.user.js) |
+| `instagram-media-downloader.user.js` | 1.0.0 | Instagram | 帖子三点按钮左侧插入下载入口；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。 | [Raw](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/instagram-media-downloader.user.js) |
+| `bluesky-media-downloader.user.js` | 1.0.0 | Bluesky | 帖子下载按钮和页面级入口；API 补全媒体；单图直下；多媒体选择；图片 PNG；视频 MP4；支持 MP3 抽取和 GIF 转换。 | [Raw](https://raw.githubusercontent.com/xiaohaoyiqu/tempermonkey-scripts/main/bluesky-media-downloader.user.js) |
+
+## 安装
+
+推荐方式：
+安装Tampermonkey -> 打开上表对应的 Raw 链接 -> Tampermonkey 会识别 `.user.js` 并提示安装。
+
+手动方式：
+打开Tampermonkey管理面板 -> 新建脚本->复制对应 `.user.js` 文件内容并保存。
+
+## 浏览器和权限要求
+
+### Zhihu Reading Helper
+会保存最近浏览的5个问题，可以自动收起或者展开当前问题页的答案，可以设置移动时隐藏导航栏。
+
+
+### Instagram Media Downloader
+用来下载Instagram的图片，gif，视频，可转视频为gif,后续添加任务队列。
+脚本声明 `@connect *`，首次读取媒体时可能需要在脚本管理器中授权。
+Instagram 的媒体地址可能是临时 URL 或 `blob:`，个别情况下会下载失败或只能打开原链接。
+
+### Bluesky Media Downloader
+用来下载bluesky的图片，gif，视频，可转视频为gif,后续添加任务队列。
+- 脚本声明以下跨源权限：
+  - `public.api.bsky.app`
+  - `bsky.social`
+  - `cdn.bsky.app`
+  - `video.bsky.app`
+  - `video.cdn.bsky.app`
+
+第一次读取 API 或媒体时，Tampermonkey 可能要求授权。
+
+
+## 注意事项
+
+三个脚本都只处理浏览器页面已经加载出来的内容。Instagram 和 Bluesky 的视频、GIF、音频转换都在浏览器本地执行，长视频会比较耗 CPU 和内存。 外部库来自 CDN，网络不可达时，基础下载仍可用，但 MP3/GIF 附加功能不可用。 如果脚本管理器拒绝跨域权限，媒体转换和 API 补全会失败。
+

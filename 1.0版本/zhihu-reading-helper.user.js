@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Zhihu Reading Helper@萧浩已去(xiaohaoyiqu)
 // @namespace    local.content.downloader
-// @version      1.1.0
-// @description:zh-CN  知乎阅读辅助：通过按钮轮手动管理浏览历史、固定问题、分范围收起回答、顶部导航隐藏，不默认修改页面。
+// @version      1.0.0
+// @description:zh-CN  知乎阅读辅助：通过按钮轮手动管理浏览历史、内容收起或收起过长回答、顶部导航隐藏，不默认修改页面。
 // @author       萧浩已去(xiaohaoyiqu)
 // @match        https://www.zhihu.com/*
 // @match        https://zhihu.com/*
@@ -102,83 +102,26 @@
     return document.title.replace(/\s*-\s*知乎\s*$/, "").trim() || "知乎页面";
   }
 
-  function isQuestionDetailPage() {
-    return /^\/question\/\d+(?:\/answer\/\d+)?\/?$/.test(location.pathname);
-  }
-
-  function normalizeHistoryItems(items) {
-    const source = Array.isArray(items) ? items : [];
-    const seen = new Set();
-    const normalized = [];
-    for (const item of source) {
-      if (!item || !item.url) continue;
-      const id = String(item.id || item.url);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      normalized.push({
-        id,
-        title: item.title || item.url,
-        url: item.url,
-        savedAt: Number(item.savedAt) || 0,
-        pinned: Boolean(item.pinned),
-      });
-    }
-    return normalized;
-  }
-
-  function writeHistory(items) {
-    const normalized = normalizeHistoryItems(items);
-    const pinned = normalized.filter((item) => item.pinned);
-    const recent = normalized.filter((item) => !item.pinned).slice(0, MAX_HISTORY);
-    gmSet(HISTORY_KEY, [...pinned, ...recent]);
-  }
-
   function recordQuestionHistory() {
     const match = location.pathname.match(/^\/question\/(\d+)/);
     if (!match) return false;
-    const stored = normalizeHistoryItems(gmGet(HISTORY_KEY, []));
-    const existing = stored.find((old) => old && old.id === match[1]);
 
     const item = {
       id: match[1],
       title: questionTitle(),
       url: location.origin + location.pathname,
       savedAt: Date.now(),
-      pinned: existing ? Boolean(existing.pinned) : false,
     };
-    const pinned = stored
-      .filter((old) => old && old.pinned && old.id !== item.id);
-    const recent = [item, ...stored.filter((old) => old && !old.pinned && old.id !== item.id)]
-      .filter((old) => old && !old.pinned)
-      .slice(0, MAX_HISTORY);
-    writeHistory(item.pinned ? [item, ...pinned, ...recent] : [...pinned, ...recent]);
+    const stored = gmGet(HISTORY_KEY, []);
+    const history = Array.isArray(stored) ? stored : [];
+    const next = [item, ...history.filter((old) => old && old.id !== item.id)].slice(0, MAX_HISTORY);
+    gmSet(HISTORY_KEY, next);
     return true;
   }
 
   function readHistory() {
-    return normalizeHistoryItems(gmGet(HISTORY_KEY, []));
-  }
-
-  function togglePinnedHistoryItem(itemId) {
-    const history = readHistory();
-    let changed = false;
-    for (const item of history) {
-      if (item.id !== itemId) continue;
-      item.pinned = !item.pinned;
-      changed = true;
-      break;
-    }
-    if (!changed) return false;
-    writeHistory(history);
-    return true;
-  }
-
-  function clearUnpinnedHistory() {
-    const history = readHistory();
-    const pinned = history.filter((item) => item.pinned);
-    const removed = history.length - pinned.length;
-    writeHistory(pinned);
-    return removed;
+    const stored = gmGet(HISTORY_KEY, []);
+    return Array.isArray(stored) ? stored.filter((item) => item && item.url) : [];
   }
 
   function makeShadowUi() {
@@ -262,27 +205,14 @@
         .wheel-button:hover {
           background: #175199;
         }
-        .wheel-button:disabled {
-          color: rgba(255, 255, 255, 0.78);
-          background: #94a3b8;
-          opacity: 0.62;
-          cursor: not-allowed;
-          filter: grayscale(0.2);
-        }
         .open .wheel-button {
           opacity: 1;
           pointer-events: auto;
         }
-        .open .wheel-button:disabled {
-          opacity: 0.62;
-        }
         .open .action-history {
-          transform: translate(-58px, -235px) scale(1);
-        }
-        .open .action-collapse-current {
           transform: translate(-58px, -188px) scale(1);
         }
-        .open .action-collapse-all {
+        .open .action-collapse {
           transform: translate(-58px, -141px) scale(1);
         }
         .open .action-restore {
@@ -318,32 +248,10 @@
           font-size: 13px;
           font-weight: 600;
         }
-        .history-actions {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .history-clear,
         .history-close {
           padding: 2px 5px;
           color: #64748b;
           background: transparent;
-        }
-        .history-clear:hover,
-        .history-close:hover {
-          color: #175199;
-        }
-        .history-row {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          align-items: stretch;
-          border-bottom: 1px solid rgba(15, 23, 42, 0.07);
-        }
-        .history-row.is-pinned {
-          background: #f8fbff;
-        }
-        .history-row:hover {
-          background: #f6f8fa;
         }
         .history-item {
           display: block;
@@ -352,18 +260,10 @@
           text-decoration: none;
           font-size: 13px;
           line-height: 1.4;
-          min-width: 0;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.07);
         }
-        .history-pin {
-          padding: 0 10px;
-          color: #64748b;
-          background: transparent;
-          font-size: 12px;
-          white-space: nowrap;
-        }
-        .history-pin.is-pinned {
-          color: #175199;
-          font-weight: 600;
+        .history-item:hover {
+          background: #f6f8fa;
         }
         .history-empty {
           padding: 13px 11px;
@@ -392,8 +292,7 @@
       <div class="root">
         <div class="history-panel" hidden></div>
         <button class="wheel-button action-history" type="button" title="查看浏览历史" aria-label="查看浏览历史">历史</button>
-        <button class="wheel-button action-collapse-current" type="button" title="收起当前可见回答" aria-label="收起当前可见回答">收当前</button>
-        <button class="wheel-button action-collapse-all" type="button" title="收起全页较长回答" aria-label="收起全页较长回答">收全页</button>
+        <button class="wheel-button action-collapse" type="button" title="收起当前页面较长内容" aria-label="收起当前页面较长内容">收起</button>
         <button class="wheel-button action-restore" type="button" title="展开收起内容或触发页面阅读全文" aria-label="展开收起内容或触发页面阅读全文">展开</button>
         <button class="wheel-button action-header" type="button" title="开启或关闭顶部导航滚动隐藏" aria-label="开启或关闭顶部导航滚动隐藏">导航</button>
         <button class="wheel-button action-refresh" type="button" title="记录当前问题并更新历史面板" aria-label="记录当前问题并更新历史面板">记录</button>
@@ -407,8 +306,7 @@
       root: shadow.querySelector(".root"),
       main: shadow.querySelector(".main-button"),
       history: shadow.querySelector(".action-history"),
-      collapseCurrent: shadow.querySelector(".action-collapse-current"),
-      collapseAll: shadow.querySelector(".action-collapse-all"),
+      collapse: shadow.querySelector(".action-collapse"),
       restore: shadow.querySelector(".action-restore"),
       header: shadow.querySelector(".action-header"),
       refresh: shadow.querySelector(".action-refresh"),
@@ -429,43 +327,8 @@
 
   function setMenuOpen(open) {
     if (!ui) return;
-    if (open) updatePageScopedActions();
     ui.root.classList.toggle("open", open);
     ui.main.setAttribute("aria-expanded", open ? "true" : "false");
-  }
-
-  function setButtonState(button, enabled, title) {
-    if (!button) return;
-    button.disabled = !enabled;
-    button.title = title;
-    button.setAttribute("aria-label", title);
-  }
-
-  function hasCollapsibleContent(root = document) {
-    return nativeCollapseButtons(root).length > 0 || contentBodies(root).length > 0;
-  }
-
-  function updatePageScopedActions() {
-    if (!ui) return;
-    const canRestore = isQuestionDetailPage();
-    const current = currentVisibleContentItem();
-    const canCollapseCurrent = Boolean(current && hasCollapsibleContent(current));
-    const canCollapseAll = hasCollapsibleContent(document);
-    setButtonState(
-      ui.collapseCurrent,
-      canCollapseCurrent,
-      canCollapseCurrent ? "收起当前可见回答" : "当前可见区域没有可收起回答"
-    );
-    setButtonState(
-      ui.collapseAll,
-      canCollapseAll,
-      canCollapseAll ? "收起全页较长回答" : "当前页面没有可收起回答"
-    );
-    setButtonState(
-      ui.restore,
-      canRestore,
-      canRestore ? "展开收起内容或触发页面阅读全文" : "展开只在知乎问题详情页可用"
-    );
   }
 
   function elementIsVisible(element) {
@@ -532,18 +395,6 @@
     head.className = "history-head";
     const title = document.createElement("span");
     title.textContent = "最近浏览的问题";
-    const actions = document.createElement("span");
-    actions.className = "history-actions";
-    const clear = document.createElement("button");
-    clear.className = "history-clear";
-    clear.type = "button";
-    clear.textContent = "清空";
-    clear.title = "清空未固定的历史记录";
-    clear.addEventListener("click", () => {
-      const removed = clearUnpinnedHistory();
-      renderHistoryPanel();
-      showToast(removed ? `已清空 ${removed} 条未固定记录` : "没有可清空的未固定记录");
-    });
     const close = document.createElement("button");
     close.className = "history-close";
     close.type = "button";
@@ -551,8 +402,7 @@
     close.addEventListener("click", () => {
       ui.panel.hidden = true;
     });
-    actions.append(clear, close);
-    head.append(title, actions);
+    head.append(title, close);
     ui.panel.appendChild(head);
 
     const history = readHistory();
@@ -564,27 +414,12 @@
       return;
     }
     for (const item of history) {
-      const row = document.createElement("div");
-      row.className = item.pinned ? "history-row is-pinned" : "history-row";
       const link = document.createElement("a");
       link.className = "history-item";
       link.href = item.url;
       link.title = item.title || "";
-      link.textContent = `${item.pinned ? "已固定 · " : ""}${item.title || item.url}`;
-      const pin = document.createElement("button");
-      pin.className = item.pinned ? "history-pin is-pinned" : "history-pin";
-      pin.type = "button";
-      pin.textContent = item.pinned ? "取消" : "固定";
-      pin.title = item.pinned ? "取消固定这个问题" : "固定这个问题";
-      pin.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        togglePinnedHistoryItem(item.id);
-        renderHistoryPanel();
-        showToast(item.pinned ? "已取消固定" : "已固定问题");
-      });
-      row.append(link, pin);
-      ui.panel.appendChild(row);
+      link.textContent = item.title || item.url;
+      ui.panel.appendChild(link);
     }
   }
 
@@ -739,8 +574,8 @@
     return result;
   }
 
-  function clickNativeCollapseButtons(root = document) {
-    return clickButtons(nativeCollapseButtons(root));
+  function clickNativeCollapseButtons() {
+    return clickButtons(nativeCollapseButtons());
   }
 
   function answerUnit(count) {
@@ -768,38 +603,9 @@
     });
   }
 
-  function visibleRatio(element) {
-    const rect = element.getBoundingClientRect();
-    const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
-    const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
-    const visibleArea = width * height;
-    const totalArea = Math.max(1, rect.width * rect.height);
-    return visibleArea / totalArea;
-  }
-
-  function currentVisibleContentItem() {
-    const selectors = ".ContentItem, .List-item, .AnswerItem, .TopstoryItem, article";
-    const viewportCenter = (window.innerHeight || document.documentElement.clientHeight || 800) / 2;
-    let best = null;
-    let bestScore = -Infinity;
-    for (const item of document.querySelectorAll(selectors)) {
-      if (!(item instanceof HTMLElement) || !elementIsVisible(item)) continue;
-      if (!item.querySelector(CONTENT_SELECTORS)) continue;
-      const rect = item.getBoundingClientRect();
-      if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
-      const centerDistance = Math.abs((rect.top + rect.bottom) / 2 - viewportCenter);
-      const score = visibleRatio(item) * 1000 - centerDistance;
-      if (score > bestScore) {
-        best = item;
-        bestScore = score;
-      }
-    }
-    return best;
-  }
-
-  function collapseContentIn(root, emptyMessage) {
-    const nativeCount = clickNativeCollapseButtons(root);
-    const bodies = contentBodies(root);
+  function collapseContent() {
+    const nativeCount = clickNativeCollapseButtons();
+    const bodies = contentBodies();
     for (const body of bodies) {
       bodyStyleSnapshots.set(body, {
         maxHeight: propertySnapshot(body, "max-height"),
@@ -810,39 +616,16 @@
       collapsedBodies.add(body);
       ensureExpandButton(body);
     }
-    const total = nativeCount + bodies.length;
-    if (!total) {
-      showToast(emptyMessage);
-      return 0;
-    }
     if (nativeCount && bodies.length) {
-      showToast(`已收起 ${answerUnit(total)}`);
+      showToast(`已收起 ${answerUnit(nativeCount + bodies.length)}`);
     } else if (nativeCount) {
       showToast(`已收起 ${answerUnit(nativeCount)}`);
     } else {
-      showToast(`已收起 ${answerUnit(bodies.length)}`);
+      showToast(bodies.length ? `已收起 ${answerUnit(bodies.length)}` : "当前页面没有检测到可收起的回答");
     }
-    return total;
-  }
-
-  function collapseCurrentContent() {
-    const current = currentVisibleContentItem();
-    if (!current) {
-      showToast("当前可见区域没有检测到可收起的回答");
-      return;
-    }
-    collapseContentIn(current, "当前可见回答没有可收起内容");
-  }
-
-  function collapseAllContent() {
-    collapseContentIn(document, "当前页面没有检测到可收起的回答");
   }
 
   function restoreContent() {
-    if (!isQuestionDetailPage()) {
-      showToast("展开只在知乎问题详情页可用");
-      return;
-    }
     let count = 0;
     for (const body of [...collapsedBodies]) {
       if (restoreCollapsedBody(body)) count += 1;
@@ -930,7 +713,6 @@
 
   function recordCurrentState() {
     const recorded = recordQuestionHistory();
-    updatePageScopedActions();
     if (ui && !ui.panel.hidden) renderHistoryPanel();
     showToast(recorded ? "已记录当前问题" : "当前页面不是问题页，已更新面板状态");
   }
@@ -945,19 +727,12 @@
       toggleHistoryPanel();
       setMenuOpen(true);
     });
-    ui.collapseCurrent.addEventListener("click", () => {
-      collapseCurrentContent();
-      updatePageScopedActions();
-      setMenuOpen(false);
-    });
-    ui.collapseAll.addEventListener("click", () => {
-      collapseAllContent();
-      updatePageScopedActions();
+    ui.collapse.addEventListener("click", () => {
+      collapseContent();
       setMenuOpen(false);
     });
     ui.restore.addEventListener("click", () => {
       restoreContent();
-      updatePageScopedActions();
       setMenuOpen(false);
     });
     ui.header.addEventListener("click", () => {
@@ -968,7 +743,6 @@
       setMenuOpen(false);
     });
     updateHeaderButton();
-    updatePageScopedActions();
     adjustWheelPosition();
     window.addEventListener("resize", scheduleWheelPosition, { passive: true });
     window.addEventListener("scroll", scheduleWheelPosition, { passive: true });
@@ -980,7 +754,6 @@
     if (location.href === lastRoute) return;
     lastRoute = location.href;
     recordQuestionHistory();
-    updatePageScopedActions();
     if (ui && !ui.panel.hidden) renderHistoryPanel();
     scheduleWheelPosition();
   }
